@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { Request, Response } from "express";
-import { verifySlackSignature } from "./verifySignature";
+import {Request, Response} from "express";
+import {verifySlackSignature} from "./verifySignature";
 
 export const slackRouter = (req: Request, res: Response) => {
   // 1. Slack URL verification (no signature needed)

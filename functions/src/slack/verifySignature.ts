@@ -1,36 +1,23 @@
-import {Request} from "express";
-import * as crypto from "crypto";
+import crypto from "crypto";
 
-export const verifySlackSignature = (
-  req: Request,
-  signingSecret: string
-): boolean => {
-  const timestamp = req.headers["x-slack-request-timestamp"] as string;
-  const slackSignature = req.headers["x-slack-signature"] as string;
+export function verifySlackSignature(req: any, signingSecret: string) {
+    const timestamp = req.headers["x-slack-request-timestamp"];
+    const signature = req.headers["x-slack-signature"];
+    const rawBody = req.body; // this is Buffer from bodyParser.raw
 
-  if (!timestamp || !slackSignature) {
-    return false;
-  }
+    if (!rawBody || !timestamp || !signature) {
+        return false;
+    }
 
-  // Prevent replay attacks (5 minute window)
-  const fiveMinutesAgo = Math.floor(Date.now() / 1000) - 300;
-  if (parseInt(timestamp, 10) < fiveMinutesAgo) {
-    return false;
-  }
+    const baseString = `v0:${timestamp}:${rawBody.toString()}`;
+    const hmac = crypto
+        .createHmac("sha256", signingSecret)
+        .update(baseString)
+        .digest("hex");
 
-  const rawBody = (req as any).rawBody?.toString();
-  if (!rawBody) {
-    return false;
-  }
-
-  const baseString = `v0:${timestamp}:${rawBody}`;
-
-  const hmac = crypto.createHmac("sha256", signingSecret);
-  hmac.update(baseString);
-  const computed = `v0=${hmac.digest("hex")}`;
-
-  return crypto.timingSafeEqual(
-    Buffer.from(computed, "utf8"),
-    Buffer.from(slackSignature, "utf8")
-  );
-};
+    const computed = `v0=${hmac}`;
+    return crypto.timingSafeEqual(
+        Buffer.from(computed),
+        Buffer.from(signature)
+    );
+}
