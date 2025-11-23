@@ -1,42 +1,48 @@
+// src/index.ts
 import * as functions from "firebase-functions";
+import dotenv from "dotenv";
 import express from "express";
 import getRawBody from "raw-body";
 
-import {slackRouter} from "./slack/slackRouter";
-import {githubRouter} from "./github/webhookRouter";
-import {trelloRouter} from "./trello/trelloRouter";
-import {driveRouter} from "./drive/driveRouter";
+import { slackRouter } from "./integrations/slack/slackRouter";
+import { trelloRouter } from "./integrations/trello/trelloRouter";
+import { githubRouter } from "./integrations/github/githubRouter";
 
 const app = express();
 
-// --------------------------------------------------------
-// RAW BODY HANDLING — REQUIRED FOR SLACK SIGNATURE VERIFY
-// --------------------------------------------------------
-app.use((req: any, res, next) => {
-  // Only capture raw body for Slack events
-  if (req.url === "/slack/events") {
-    getRawBody(req)
-      .then((buf) => {
-        req.rawBody = buf; // <— store exact bytes
-        next();
-      })
-      .catch((err) => {
-        console.error("Error capturing raw body:", err);
-        next();
-      });
-  } else {
-    next();
+dotenv.config(); // Loads functions/.env into process.env
+
+// -----------------------------------------------------
+// SLACK RAW BODY CAPTURE (for signature verification)
+// -----------------------------------------------------
+// We do NOT run express.json() on /slack.* routes.
+// Slack needs the exact raw body for v0 signing.
+app.use("/slack", async (req: any, res, next) => {
+  try {
+    req.rawBody = await getRawBody(req);
+  } catch (err) {
+    console.error("Slack rawBody capture error", err);
   }
+  next();
 });
 
-// Parse JSON AFTER capturing rawBody
+// Slack router (expects req.rawBody and handles its own JSON parsing)
+app.use("/slack", slackRouter);
+
+// -----------------------------------------------------
+// Normal JSON parsing for everything else
+// -----------------------------------------------------
 app.use(express.json());
 
-// Routes
-app.post("/slack/events", slackRouter);
-app.post("/github/webhook", githubRouter);
-app.post("/trello/sync", trelloRouter);
-app.post("/drive/hooks", driveRouter);
+// Trello webhooks
+app.use("/trello", trelloRouter);
+
+// GitHub webhooks
+app.use("/github", githubRouter);
+
+// Basic health check
+app.get("/", (req, res) => {
+  res.status(200).send("Grean Ops API OK");
+});
 
 export const api = functions.https.onRequest(app);
-
